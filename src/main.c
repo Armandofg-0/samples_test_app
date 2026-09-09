@@ -1,422 +1,148 @@
 /*
- * Copyright (c) 2025 Nordic Semiconductor ASA
+ * Envio BLE minimo para XIAO nRF52840.
  *
- * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
+ * Anuncia como XIAO-FLOW y notifica un paquete de datos simulados por segundo.
+ * Sin sensor, sin GPIO, sin almacenamiento: solo el transporte.
  */
 
-/** @file
- *  @brief General Central tester sample
- */
-
-#include <errno.h>
 #include <zephyr/kernel.h>
-#include <zephyr/sys/byteorder.h>
-#include <zephyr/sys/printk.h>
+#include <zephyr/logging/log.h>
 
 #include <zephyr/bluetooth/bluetooth.h>
-#include <zephyr/bluetooth/hci.h>
 #include <zephyr/bluetooth/conn.h>
-#include <zephyr/bluetooth/uuid.h>
 #include <zephyr/bluetooth/gatt.h>
+#include <zephyr/bluetooth/uuid.h>
 
-#include <bluetooth/gatt_dm.h>
-#include <bluetooth/scan.h>
+LOG_MODULE_REGISTER(flow_sim, LOG_LEVEL_INF);
 
-#include <zephyr/drivers/uart.h>
-#include <zephyr/settings/settings.h>
+#define BT_UUID_FLOW_SVC_VAL \
+	BT_UUID_128_ENCODE(0xf1a70001, 0x9b4c, 0x4f3e, 0x8b6d, 0x1c2a3d4e5f60)
+#define BT_UUID_FLOW_DATA_VAL \
+	BT_UUID_128_ENCODE(0xf1a70002, 0x9b4c, 0x4f3e, 0x8b6d, 0x1c2a3d4e5f60)
 
-/* UART payload buffer element size. */
-#define UART_BUF_SIZE 20
+static const struct bt_uuid_128 flow_svc_uuid  = BT_UUID_INIT_128(BT_UUID_FLOW_SVC_VAL);
+static const struct bt_uuid_128 flow_data_uuid = BT_UUID_INIT_128(BT_UUID_FLOW_DATA_VAL);
 
-static const struct device *uart;
-
-struct uart_data_t {
-	void *fifo_reserved;
-	uint8_t data[UART_BUF_SIZE];
-	uint16_t len;
+/* Paquete de 10 bytes, little-endian. */
+struct __packed flow_packet {
+	uint16_t seq;  /* numero de secuencia: detecta notificaciones perdidas */
+	uint32_t ts;   /* segundos desde el arranque                           */
+	int16_t  flow; /* centesimas de ml/min (500 = 5.00 ml/min)             */
+	int16_t  temp; /* centesimas de C      (2500 = 25.00 C)                */
 };
 
-static K_FIFO_DEFINE(fifo_uart_tx_data);
-static K_FIFO_DEFINE(fifo_uart_rx_data);
+static bool notify_enabled;
 
-static K_SEM_DEFINE(bt_conn_sem, 0, 2);
-
-static struct bt_conn *default_conn;
-
-static char *dev_names[] = {
-	"Nordic_UART_Service",
-	"Nordic_Throughput",
-	"NCS_HIDS_keyboard",
-	"NCS_HIDS_mouse",
-	"Nordic_LBS",
-	"Test beacon",
-};
-
-static char *hid_uuid = (char *)BT_UUID_HIDS;
-
-static void uart_cb(const struct device *uart, void *user_data)
+static void data_ccc_changed(const struct bt_gatt_attr *attr, uint16_t value)
 {
-	ARG_UNUSED(user_data);
-	static struct uart_data_t *rx;
+	ARG_UNUSED(attr);
 
-	uart_irq_update(uart);
-
-	if (uart_irq_rx_ready(uart)) {
-		int data_length;
-
-		if (!rx) {
-			rx = k_malloc(sizeof(*rx));
-			if (rx) {
-				rx->len = 0;
-			} else {
-				printk("Not able to allocate UART receive buffer\n");
-				return;
-			}
-		}
-
-		data_length = uart_fifo_read(uart, &rx->data[rx->len],
-					     UART_BUF_SIZE - rx->len);
-		rx->len += data_length;
-
-		if (rx->len > 0) {
-			/* Send buffer to Bluetooth unit if either buffer size
-			 * is reached or the char \n or \r is received, which
-			 * ever comes first
-			 */
-			if ((rx->len == UART_BUF_SIZE) ||
-			    (rx->data[rx->len - 1] == '\n') ||
-			    (rx->data[rx->len - 1] == '\r')) {
-				k_fifo_put(&fifo_uart_rx_data, rx);
-				rx = NULL;
-			}
-		}
-	}
-
-	if (uart_irq_tx_ready(uart)) {
-		struct uart_data_t *buf = k_fifo_get(&fifo_uart_tx_data, K_NO_WAIT);
-		uint16_t written = 0;
-
-		/* Nothing in the FIFO, nothing to send */
-		if (!buf) {
-			uart_irq_tx_disable(uart);
-			return;
-		}
-
-		while (buf->len > written) {
-			written += uart_fifo_fill(uart, &buf->data[written], buf->len - written);
-		}
-
-		while (!uart_irq_tx_complete(uart)) {
-			/* Wait for the last byte to get
-			 * shifted out of the module
-			 */
-		}
-
-		if (k_fifo_is_empty(&fifo_uart_tx_data)) {
-			uart_irq_tx_disable(uart);
-		}
-
-		k_free(buf);
-	}
+	notify_enabled = (value == BT_GATT_CCC_NOTIFY);
+	LOG_INF("Notificaciones %s", notify_enabled ? "habilitadas" : "deshabilitadas");
 }
 
-static void discovery_complete(struct bt_gatt_dm *dm, void *context)
+BT_GATT_SERVICE_DEFINE(flow_svc,
+	BT_GATT_PRIMARY_SERVICE(&flow_svc_uuid),
+	BT_GATT_CHARACTERISTIC(&flow_data_uuid.uuid,
+			       BT_GATT_CHRC_NOTIFY, BT_GATT_PERM_NONE,
+			       NULL, NULL, NULL),
+	BT_GATT_CCC(data_ccc_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
+);
+
+static void connected(struct bt_conn *conn, uint8_t err)
 {
-	printk("Service discovery completed\n");
+	ARG_UNUSED(conn);
 
-	bt_gatt_dm_data_print(dm);
-
-	bt_gatt_dm_data_release(dm);
-}
-
-static void discovery_service_not_found(struct bt_conn *conn, void *context)
-{
-	printk("Service not found\n");
-	printk("FAILURE - Service not found\n");
-}
-
-static void discovery_error(struct bt_conn *conn, int err, void *context)
-{
-	printk("Error while discovering GATT database: (%d)\n", err);
-}
-
-struct bt_gatt_dm_cb discovery_cb = {
-	.completed = discovery_complete,
-	.service_not_found = discovery_service_not_found,
-	.error_found = discovery_error,
-};
-
-static void gatt_discover(struct bt_conn *conn)
-{
-	if (conn == default_conn) {
-		int err = bt_gatt_dm_start(conn, NULL, &discovery_cb, NULL);
-
-		if (err) {
-			printk("Failed to start discovery process (err:%d)\n", err);
-		}
-	}
-}
-
-static void connected(struct bt_conn *conn, uint8_t conn_err)
-{
-	char addr[BT_ADDR_LE_STR_LEN];
-	int err;
-
-	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
-
-	if (conn_err) {
-		printk("Failed to connect to %s (%d)\n", addr, conn_err);
+	if (err) {
+		LOG_ERR("Conexion fallida (err 0x%02x)", err);
 		return;
 	}
 
-	printk("Connected: %s\n", addr);
-	err = bt_conn_set_security(conn, BT_SECURITY_L2);
-	if (err) {
-		printk("Failed to set security: %d\n", err);
-
-		gatt_discover(conn);
-	}
-
-	err = bt_scan_stop();
-	if ((!err) && (err != -EALREADY)) {
-		printk("Stop LE scan failed (err %d)\n", err);
-	}
-
-	k_sem_give(&bt_conn_sem);
+	LOG_INF("Conectado");
 }
 
 static void disconnected(struct bt_conn *conn, uint8_t reason)
 {
-	char addr[BT_ADDR_LE_STR_LEN];
+	ARG_UNUSED(conn);
 
-	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
-
-	printk("Disconnected: %s (reason %u)\n", addr, reason);
-
-	if (default_conn != conn) {
-		return;
-	}
-
-	bt_conn_unref(default_conn);
-	default_conn = NULL;
-
-	k_sem_give(&bt_conn_sem);
+	/* El CCC se reinicia al desconectar; el flag debe seguirlo. */
+	notify_enabled = false;
+	LOG_INF("Desconectado (reason 0x%02x)", reason);
 }
 
-static void security_changed(struct bt_conn *conn, bt_security_t level,
-			     enum bt_security_err err)
-{
-	char addr[BT_ADDR_LE_STR_LEN];
-
-	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
-
-	if (!err) {
-		printk("Security changed: %s level %u\n", addr, level);
-	} else {
-		printk("Security failed: %s level %u err %d\n", addr, level, err);
-	}
-
-	gatt_discover(conn);
-}
-
-static struct bt_conn_cb conn_callbacks = {
+BT_CONN_CB_DEFINE(conn_callbacks) = {
 	.connected = connected,
 	.disconnected = disconnected,
-	.security_changed = security_changed,
 };
 
-static void scan_filter_match(struct bt_scan_device_info *device_info,
-			      struct bt_scan_filter_match *filter_match,
-			      bool connectable)
-{
-	char addr[BT_ADDR_LE_STR_LEN];
+static const struct bt_data ad[] = {
+	BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
+	BT_DATA(BT_DATA_NAME_COMPLETE, CONFIG_BT_DEVICE_NAME,
+		sizeof(CONFIG_BT_DEVICE_NAME) - 1),
+};
 
-	bt_addr_le_to_str(device_info->recv_info->addr, addr, sizeof(addr));
+/* El UUID de 128 bits va en el scan response: junto al nombre no cabe en los
+ * 31 bytes del paquete de advertising.
+ */
+static const struct bt_data sd[] = {
+	BT_DATA_BYTES(BT_DATA_UUID128_ALL, BT_UUID_FLOW_SVC_VAL),
+};
 
-	printk("Filters matched. Address: %s connectable: %d\n", addr, connectable);
-}
-
-static void scan_connecting_error(struct bt_scan_device_info *device_info)
-{
-	printk("Connecting failed\n");
-	printk("FAILURE - Connection failed\n");
-}
-
-static void scan_connecting(struct bt_scan_device_info *device_info,
-			    struct bt_conn *conn)
-{
-	default_conn = bt_conn_ref(conn);
-}
-
-BT_SCAN_CB_INIT(scan_cb, scan_filter_match, NULL, scan_connecting_error,
-		scan_connecting);
-
-static int uart_init(void)
-{
-	uart = DEVICE_DT_GET(DT_CHOSEN(zephyr_console));
-	if (!uart) {
-		printk("UART binding failed\n");
-		return -ENXIO;
-	}
-
-	uart_irq_callback_set(uart, uart_cb);
-	uart_irq_rx_enable(uart);
-
-	printk("UART initialized\n");
-	return 0;
-}
-
-static int scan_init(void)
-{
-	int err;
-	int i;
-	struct bt_scan_init_param scan_init = {
-		.connect_if_match = 1,
-	};
-
-	bt_scan_init(&scan_init);
-	bt_scan_cb_register(&scan_cb);
-
-	for (i = 0; i < ARRAY_SIZE(dev_names); i++) {
-		printk("Device %s\n", dev_names[i]);
-		err = bt_scan_filter_add(BT_SCAN_FILTER_TYPE_NAME, dev_names[i]);
-		if (err) {
-			printk("Scanning filters cannot be set (err %d)\n", err);
-			printk("FAILURE - Cannot set filters\n");
-			return err;
-		}
-	}
-
-	err = bt_scan_filter_add(BT_SCAN_FILTER_TYPE_UUID, hid_uuid);
-	if (err) {
-		printk("Scanning filters cannot be set (err %d)\n", err);
-		printk("FAILURE - Cannot set filters\n");
-		return err;
-	}
-
-	err = bt_scan_filter_enable(BT_SCAN_NAME_FILTER | BT_SCAN_UUID_FILTER,
-				    false);
-	if (err) {
-		printk("Filters cannot be turned on (err %d)\n", err);
-		printk("FAILURE - Cannot set filters\n");
-		return err;
-	}
-
-	printk("Scan module initialized\n");
-	return err;
-}
-
-static void pairing_complete(struct bt_conn *conn, bool bonded)
-{
-	printk("Paired conn: %p, bonded: %d\n", conn, bonded);
-}
-
-static void pairing_failed(struct bt_conn *conn, enum bt_security_err reason)
-{
-	printk("Pairing failed conn: %p, reason %d\n", conn, reason);
-}
-
-static struct bt_conn_auth_info_cb auth_info_callbacks = {
-	.pairing_complete = pairing_complete,
-	.pairing_failed = pairing_failed,
+/* Seno de 16 puntos escalado a +/-100, para no usar aritmetica flotante. */
+static const int16_t sin_lut[16] = {
+	0, 38, 71, 92, 100, 92, 71, 38, 0, -38, -71, -92, -100, -92, -71, -38,
 };
 
 int main(void)
 {
+	uint16_t seq = 0;
 	int err;
 
-	printk("Starting BLE test application\n");
-
-	err = bt_conn_auth_info_cb_register(&auth_info_callbacks);
-	if (err) {
-		printk("Failed to register authorization callbacks.\n");
-		return 1;
-	}
+	/* Margen para que el host enumere el puerto USB CDC antes de los
+	 * primeros mensajes; si no, se pierden.
+	 */
+	k_msleep(2000);
 
 	err = bt_enable(NULL);
 	if (err) {
-		printk("Bluetooth init failed (err %d)\n", err);
-		return 1;
-	}
-	printk("Bluetooth initialized\n");
-
-	if (IS_ENABLED(CONFIG_SETTINGS)) {
-		settings_load();
+		LOG_ERR("bt_enable fallo (err %d)", err);
+		return err;
 	}
 
-	bt_conn_cb_register(&conn_callbacks);
-
-	int (*module_init[])(void) = { uart_init, scan_init };
-	for (size_t i = 0; i < ARRAY_SIZE(module_init); i++) {
-		err = (*module_init[i])();
-		if (err) {
-			return 1;
-		}
+	/* En NCS 2.x esta opcion se llamaba BT_LE_ADV_OPT_CONNECTABLE. */
+	err = bt_le_adv_start(BT_LE_ADV_PARAM(BT_LE_ADV_OPT_CONN,
+					      BT_GAP_ADV_FAST_INT_MIN_2,
+					      BT_GAP_ADV_FAST_INT_MAX_2, NULL),
+			      ad, ARRAY_SIZE(ad), sd, ARRAY_SIZE(sd));
+	if (err) {
+		LOG_ERR("bt_le_adv_start fallo (err %d)", err);
+		return err;
 	}
 
-	do {
-		k_sleep(K_MSEC(500));
+	LOG_INF("Anunciando como %s", CONFIG_BT_DEVICE_NAME);
 
-		err = bt_scan_stop();
-		if ((!err) && (err != -EALREADY)) {
-			printk("Stop LE scan failed (err %d)\n", err);
+	while (1) {
+		int16_t ripple = sin_lut[seq % ARRAY_SIZE(sin_lut)];
+		struct flow_packet pkt = {
+			.seq = seq++,
+			.ts = (uint32_t)(k_uptime_get() / 1000),
+			.flow = 500 + (ripple * 50) / 100,  /* 5.00 +/- 0.50 ml/min */
+			.temp = 2500 + (ripple * 20) / 100, /* 25.00 +/- 0.20 C     */
+		};
+
+		if (notify_enabled) {
+			err = bt_gatt_notify(NULL, &flow_svc.attrs[1], &pkt, sizeof(pkt));
+			if (err) {
+				LOG_WRN("bt_gatt_notify fallo (err %d)", err);
+			} else {
+				LOG_INF("seq=%u flujo=%d.%02d ml/min temp=%d.%02d C",
+					pkt.seq, pkt.flow / 100, pkt.flow % 100,
+					pkt.temp / 100, pkt.temp % 100);
+			}
 		}
 
-		err = bt_scan_start(BT_SCAN_TYPE_SCAN_ACTIVE);
-		if (err) {
-			printk("Scanning failed to start (err %d)\n", err);
-			printk("FAILULRE - Scanning failed to start\n");
-			continue;
-		}
-		printk("Scanning successfully started\n");
+		k_msleep(1000);
+	}
 
-		err = k_sem_take(&bt_conn_sem, K_MSEC(2000));
-		if (err) {
-			printk("Connection failed - timeout\n");
-			continue;
-		}
-		k_sleep(K_MSEC(5000));
-
-		err = bt_conn_disconnect(default_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
-		if (err) {
-			printk("FAILURE - Disconnection failed\n");
-			printk("Disconnect failed with error: (err %d)\n", err);
-			continue;
-		}
-		printk("Disconnect successful\n");
-
-		err = k_sem_take(&bt_conn_sem, K_MSEC(2000));
-		if (err) {
-			printk("Disconnection failed - timeout");
-			continue;
-		}
-		k_sleep(K_MSEC(3000));
-
-		err = bt_scan_start(BT_SCAN_TYPE_SCAN_ACTIVE);
-		if (err) {
-			printk("Scanning failed to start (err %d)\n", err);
-			printk("FAILULRE - Scanning failed to start\n");
-			continue;
-		}
-		printk("Scanning successfully started\n");
-
-		err = k_sem_take(&bt_conn_sem, K_MSEC(2000));
-		if (err) {
-			printk("Connection failed - timeout");
-			continue;
-		}
-		k_sleep(K_MSEC(10000));
-
-		err = bt_conn_disconnect(default_conn,
-					 BT_HCI_ERR_REMOTE_USER_TERM_CONN);
-		if (err) {
-			printk("FAILURE - Disconnection failed\n");
-			printk("Disconnect failed with error: (err %d)\n", err);
-			continue;
-		}
-		printk("Disconnect successful\n");
-
-		printk("SUCCESS\n");
-		return 0;
-	} while (1);
+	return 0;
 }

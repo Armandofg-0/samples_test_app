@@ -1,0 +1,43 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "C:/Users/fuent/Desktop/samples_test_app/xiao_flow_sim/build/_sysbuild/sysbuild/images/CMakeFiles/xiao_flow_sim"
+		},
+		{
+			"file" : "C:/Users/fuent/Desktop/samples_test_app/xiao_flow_sim/build/_sysbuild/sysbuild/images/CMakeFiles/xiao_flow_sim.rule"
+		},
+		{
+			"file" : "C:/Users/fuent/Desktop/samples_test_app/xiao_flow_sim/build/_sysbuild/sysbuild/images/CMakeFiles/xiao_flow_sim-complete.rule"
+		},
+		{
+			"file" : "C:/Users/fuent/Desktop/samples_test_app/xiao_flow_sim/build/_sysbuild/sysbuild/images/xiao_flow_sim-prefix/src/xiao_flow_sim-stamp/xiao_flow_sim-build.rule"
+		},
+		{
+			"file" : "C:/Users/fuent/Desktop/samples_test_app/xiao_flow_sim/build/_sysbuild/sysbuild/images/xiao_flow_sim-prefix/src/xiao_flow_sim-stamp/xiao_flow_sim-configure.rule"
+		},
+		{
+			"file" : "C:/Users/fuent/Desktop/samples_test_app/xiao_flow_sim/build/_sysbuild/sysbuild/images/xiao_flow_sim-prefix/src/xiao_flow_sim-stamp/xiao_flow_sim-download.rule"
+		},
+		{
+			"file" : "C:/Users/fuent/Desktop/samples_test_app/xiao_flow_sim/build/_sysbuild/sysbuild/images/xiao_flow_sim-prefix/src/xiao_flow_sim-stamp/xiao_flow_sim-install.rule"
+		},
+		{
+			"file" : "C:/Users/fuent/Desktop/samples_test_app/xiao_flow_sim/build/_sysbuild/sysbuild/images/xiao_flow_sim-prefix/src/xiao_flow_sim-stamp/xiao_flow_sim-mkdir.rule"
+		},
+		{
+			"file" : "C:/Users/fuent/Desktop/samples_test_app/xiao_flow_sim/build/_sysbuild/sysbuild/images/xiao_flow_sim-prefix/src/xiao_flow_sim-stamp/xiao_flow_sim-patch.rule"
+		},
+		{
+			"file" : "C:/Users/fuent/Desktop/samples_test_app/xiao_flow_sim/build/_sysbuild/sysbuild/images/xiao_flow_sim-prefix/src/xiao_flow_sim-stamp/xiao_flow_sim-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"xiao_flow_sim"
+		],
+		"name" : "xiao_flow_sim"
+	}
+}
