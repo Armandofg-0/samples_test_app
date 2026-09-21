@@ -1,0 +1,71 @@
+{
+    "version": 4,
+    "configurations": [
+        {
+            "name": "nRF Connect",
+            "configurationProvider": "nordic-semiconductor.nrf-connect",
+            "compileCommands": "${workspaceFolder}/build/samples_test_app/compile_commands.json",
+            "compilerPath": "C:/ncs/toolchains/dcbdc366a1/opt/zephyr-sdk/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc.exe",
+            "compilerArgs": [
+                "-mcpu=cortex-m4",
+                "-mthumb",
+                "-mabi=aapcs"
+            ],
+            "cStandard": "c11",
+            "intelliSenseMode": "gcc-arm",
+            "forcedInclude": [
+                "${workspaceFolder}/build/samples_test_app/zephyr/include/generated/zephyr/autoconf.h",
+                "C:/ncs/v3.4.0/zephyr/include/zephyr/toolchain/zephyr_stdint.h"
+            ],
+            "defines": [
+                "__ZEPHYR__=1",
+                "KERNEL",
+                "NRF52840_XXAA",
+                "_POSIX_THREAD_SAFE_FUNCTIONS=200809L",
+                "__LINUX_ERRNO_EXTENSIONS__",
+                "PICOLIBC_LONG_LONG_PRINTF_SCANF"
+            ],
+            "includePath": [
+                "${workspaceFolder}",
+                "${workspaceFolder}/src",
+                "C:/ncs/v3.4.0/nrf/drivers/mpsl/clock_control",
+                "${workspaceFolder}/build/samples_test_app/zephyr/include/generated/zephyr",
+                "C:/ncs/v3.4.0/zephyr/include",
+                "${workspaceFolder}/build/samples_test_app/zephyr/include/generated",
+                "C:/ncs/v3.4.0/zephyr/soc/nordic",
+                "C:/ncs/v3.4.0/zephyr/lib/libc/picolibc/include",
+                "C:/ncs/v3.4.0/zephyr/lib/posix/c_lib_ext/getopt",
+                "C:/ncs/v3.4.0/zephyr/soc/nordic/nrf52",
+                "C:/ncs/v3.4.0/zephyr/soc/nordic/common",
+                "C:/ncs/v3.4.0/zephyr/subsys/bluetooth",
+                "C:/ncs/v3.4.0/zephyr/drivers/usb/common/nrf_usbd_common",
+                "C:/ncs/v3.4.0/nrf/include",
+                "C:/ncs/v3.4.0/nrf/lib/multithreading_lock",
+                "C:/ncs/v3.4.0/nrf/subsys/bluetooth/controller",
+                "C:/ncs/v3.4.0/nrf/tests/include",
+                "C:/ncs/v3.4.0/modules/hal/cmsis_6/CMSIS/Core/Include",
+                "C:/ncs/v3.4.0/zephyr/modules/cmsis_6",
+                "C:/ncs/v3.4.0/nrf/modules/hal_nordic",
+                "C:/ncs/v3.4.0/modules/hal/nordic/nrfx",
+                "C:/ncs/v3.4.0/modules/hal/nordic/nrfx/drivers/include",
+                "C:/ncs/v3.4.0/modules/hal/nordic/nrfx/bsp/stable",
+                "C:/ncs/v3.4.0/modules/hal/nordic/nrfx/bsp/stable/templates",
+                "C:/ncs/v3.4.0/zephyr/modules/hal_nordic/nrfx",
+                "C:/ncs/v3.4.0/nrfxlib/softdevice_controller/include",
+                "C:/ncs/v3.4.0/nrfxlib/mpsl/fem/common/include",
+                "C:/ncs/v3.4.0/nrfxlib/mpsl/fem/nrf21540_gpio/include",
+                "C:/ncs/v3.4.0/nrfxlib/mpsl/fem/nrf21540_gpio_spi/include",
+                "C:/ncs/v3.4.0/nrfxlib/mpsl/fem/nrf2220/include",
+                "C:/ncs/v3.4.0/nrfxlib/mpsl/fem/nrf2240/include",
+                "C:/ncs/v3.4.0/nrfxlib/mpsl/fem/nrf22xx/include",
+                "C:/ncs/v3.4.0/nrfxlib/mpsl/fem/simple_gpio/include",
+                "C:/ncs/v3.4.0/nrfxlib/mpsl/fem/include",
+                "C:/ncs/v3.4.0/nrfxlib/mpsl/fem/include/protocol",
+                "C:/ncs/v3.4.0/nrfxlib/mpsl/include",
+                "C:/ncs/v3.4.0/nrfxlib/mpsl/include/protocol",
+                "C:/ncs/v3.4.0/zephyr/lib/libc/common/include",
+                "C:/ncs/v3.4.0/nrfxlib/crypto/nrf_cc310_platform/include"
+            ]
+        }
+    ]
+}

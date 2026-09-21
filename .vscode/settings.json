@@ -1,2 +1,9 @@
 {
+    "C_Cpp.default.configurationProvider": "nordic-semiconductor.nrf-connect",
+    "C_Cpp.default.compileCommands": "${workspaceFolder}/build/samples_test_app/compile_commands.json",
+    "C_Cpp.errorSquiggles": "enabled",
+    "files.associations": {
+        "*.h": "c",
+        "*.c": "c"
+    }
 }
