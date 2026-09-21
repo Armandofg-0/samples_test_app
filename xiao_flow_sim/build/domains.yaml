@@ -1,7 +1,0 @@
-default: xiao_flow_sim
-build_dir: C:/Users/fuent/Desktop/samples_test_app/xiao_flow_sim/build
-domains:
-  - name: xiao_flow_sim
-    build_dir: C:/Users/fuent/Desktop/samples_test_app/xiao_flow_sim/build/xiao_flow_sim
-flash_order:
-  - xiao_flow_sim
